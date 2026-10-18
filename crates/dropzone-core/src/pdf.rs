@@ -244,7 +244,9 @@ fn raw_to_png(
         4 => {
             // Naive CMYK → RGB; good enough for a preview-quality export.
             let rgb: Vec<u8> = data
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .flat_map(|p| {
                     let k = 255 - p[3] as u32;
                     [0, 1, 2].map(|i| ((255 - p[i] as u32) * k / 255) as u8)
