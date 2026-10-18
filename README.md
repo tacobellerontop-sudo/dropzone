@@ -4,7 +4,7 @@ A small, fast file explorer with the tools you usually go to a website or 7-Zip 
 convert and compress images, convert audio and video, batch rename, split PDFs, and open,
 test and extract archives without unpacking them first.
 
-It's a single native executable (Rust + egui), around 15 MB with no runtime to install.
+It's a single native executable (Rust + egui) with no runtime to install.
 FFmpeg ships next to it for audio and video.
 
 ## What it does
