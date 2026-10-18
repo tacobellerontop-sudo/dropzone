@@ -49,7 +49,7 @@ impl App {
         if self.needs_password {
             egui::Frame::NONE.fill(common::WARN.gamma_multiply(0.15)).corner_radius(6.0).inner_margin(8.0).show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("🔒 Password-protected").color(common::WARN));
+                    ui.label(RichText::new(format!("{}  Password-protected", crate::icons::LOCK_SIMPLE)).color(common::WARN));
                     let r = ui.add(egui::TextEdit::singleline(&mut self.archive_password).password(true).hint_text("Password").desired_width(180.0));
                     if ui.button("Unlock").clicked() || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))) {
                         self.archive_listing = None;
@@ -65,7 +65,7 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.add(egui::Label::new(RichText::new(&b.text).color(b.color)).wrap());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.small_button("🗙").clicked() {
+                        if ui.small_button(crate::icons::X).clicked() {
                             self.banner = None;
                         }
                         if let Some(f) = &b.folder
@@ -77,23 +77,31 @@ impl App {
                 });
             });
         }
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
             let n = self.selection.len();
-            if ui.add_enabled(n > 0, egui::Button::new(format!("Extract {n} selected…"))).clicked() {
+            if ui.add_enabled(n > 0, egui::Button::new(format!("{}  Extract {n} selected", crate::icons::TRAY_ARROW_DOWN))).clicked() {
                 self.extract_from_archive(Some(self.selection.iter().cloned().collect()), None);
             }
-            if ui.button("Extract all…").clicked() {
+            if ui.button(format!("{}  Extract all", crate::icons::TRAY_ARROW_DOWN)).clicked() {
                 self.extract_from_archive(None, None);
             }
-            if ui.button("Extract here").on_hover_text("Into a new folder next to the archive").clicked() {
+            if ui.button(format!("{}  Extract here", crate::icons::FOLDER_OPEN)).on_hover_text("Into a new folder next to the archive").clicked() {
                 let dest = archive.path.parent().map(|p| p.to_path_buf());
                 self.extract_from_archive(None, dest);
             }
-            if ui.button("Test integrity").on_hover_text("Decompress everything and check every CRC, including nested archives").clicked() {
+            if ui
+                .button(format!("{}  Test", crate::icons::SHIELD_CHECK))
+                .on_hover_text("Decompress everything and check every CRC, including nested archives")
+                .clicked()
+            {
                 let ids = self.enqueue(vec![archive.path.clone()], Operation::VerifyArchive { password: self.password(), recursive: true }, None);
                 self.track_verify(ids);
             }
-            if ui.button("Compare with folder…").on_hover_text("Find files that differ from, or are missing in, a folder on disk").clicked()
+            if ui
+                .button(format!("{}  Compare…", crate::icons::GIT_DIFF))
+                .on_hover_text("Find files that differ from, or are missing in, a folder on disk")
+                .clicked()
                 && let Some(folder) = common::pick_folder("Compare with folder")
             {
                 let (r, pw, f) = (archive.clone(), self.password(), folder.clone());

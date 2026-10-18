@@ -168,9 +168,9 @@ impl ToolPanel {
         let applicable: Vec<&Input> = inputs.iter().filter(|i| op.applies(i.kind)).collect();
 
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Tools").strong().size(16.0));
+            ui.label(RichText::new(format!("{}  Tools", crate::icons::MAGIC_WAND)).font(crate::theme::strong(15.0)).color(crate::theme::TEXT));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new("🗙").frame(false)).on_hover_text("Close").clicked() {
+                if crate::theme::icon_button(ui, crate::icons::X, true, false, "Close").clicked() {
                     request = Some(Request::Close);
                 }
             });
@@ -253,7 +253,7 @@ impl ToolPanel {
             ui.add_space(10.0);
             let writes_files = !matches!(self.settings.op, OpKind::Verify | OpKind::Checksum | OpKind::VerifyChecksums);
             if writes_files {
-                ui.label(RichText::new("SAVE TO").small().strong().weak());
+                ui.label(RichText::new("SAVE TO").font(crate::theme::strong(10.5)).color(crate::theme::TEXT_3));
                 let mut custom = self.settings.output_dir.is_some();
                 ui.radio_value(&mut custom, false, "Same folder as the originals");
                 ui.horizontal(|ui| {
@@ -297,7 +297,7 @@ impl ToolPanel {
                     (_, 1) => "Run".to_string(),
                     (_, n) => format!("Run on {n} files"),
                 };
-                let btn = egui::Button::new(RichText::new(label).strong().color(egui::Color32::WHITE)).fill(ui.visuals().selection.bg_fill);
+                let btn = crate::theme::primary_button(label).min_size(egui::vec2(0.0, 32.0));
                 if ui.add_enabled(n > 0 && !media_blocked, btn).clicked() {
                     let inputs: Vec<PathBuf> = if self.settings.op == OpKind::Create {
                         let mut seen = std::collections::HashSet::new();
@@ -662,8 +662,11 @@ fn target_label(t: MediaTarget) -> &'static str {
 }
 
 pub fn labeled(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui) -> egui::Response) {
-    ui.label(RichText::new(label).small());
-    add(ui);
+    ui.label(RichText::new(label).size(12.0).color(crate::theme::TEXT_2));
+    ui.scope(|ui| {
+        ui.spacing_mut().text_edit_width = ui.available_width();
+        add(ui)
+    });
     ui.add_space(4.0);
 }
 

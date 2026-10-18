@@ -10,6 +10,7 @@ use eframe::egui::{self, RichText};
 use crate::app::App;
 use crate::common::{self, Kind, Task};
 use crate::nav::{Item, Location};
+use crate::theme;
 
 pub enum PreviewData {
     Image(image::RgbaImage, u32, u32),
@@ -111,46 +112,68 @@ impl App {
         };
         self.load_details(ui.ctx(), &item);
 
-        ui.label(RichText::new(item.kind.icon(item.is_archive)).size(28.0).color(item.kind.color()));
-        ui.add(egui::Label::new(RichText::new(&item.name).strong().size(15.0)).wrap());
-        ui.label(RichText::new(item.type_label()).small().weak());
-        ui.add_space(8.0);
-
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            match &self.details.shown {
-                _ if self.details.task.running() => {
-                    ui.spinner();
-                }
-                Some(Shown::Image(tex, w, h)) => {
+            // Preview box: the image itself, or a big file icon.
+            let w = ui.available_width();
+            let image = match &self.details.shown {
+                Some(Shown::Image(tex, _, _)) => Some(tex.clone()),
+                _ => None,
+            };
+            let box_h = match &image {
+                Some(tex) => (tex.size_vec2().y * (w / tex.size_vec2().x).min(1.0)).clamp(120.0, 320.0),
+                None => 150.0,
+            };
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(w, box_h), egui::Sense::hover());
+            ui.painter().rect_filled(rect, 10.0, theme::FIELD);
+            match &image {
+                Some(tex) => {
                     let size = tex.size_vec2();
-                    let scale = (ui.available_width() / size.x).min(1.0);
-                    ui.image((tex.id(), size * scale));
-                    ui.label(RichText::new(format!("{w} × {h} pixels")).small().weak());
+                    let scale = ((rect.width() - 16.0) / size.x).min((rect.height() - 16.0) / size.y).min(1.0);
+                    let r = egui::Rect::from_center_size(rect.center(), size * scale);
+                    egui::Image::from_texture(tex).corner_radius(6).paint_at(ui, r);
                 }
+                None if self.details.task.running() => {
+                    ui.put(egui::Rect::from_center_size(rect.center(), egui::vec2(24.0, 24.0)), egui::Spinner::new().color(theme::TEXT_3));
+                }
+                None => theme::paint_file_icon(ui.painter(), rect.center(), 64.0, item.kind, item.is_archive),
+            }
+            ui.add_space(12.0);
+            ui.add(egui::Label::new(RichText::new(&item.name).font(theme::strong(15.0)).color(theme::TEXT)).wrap());
+            ui.label(RichText::new(item.type_label()).color(theme::TEXT_3));
+            ui.add_space(10.0);
+
+            match &self.details.shown {
                 Some(Shown::Text(t, truncated)) => {
-                    egui::Frame::NONE.fill(ui.visuals().extreme_bg_color).corner_radius(6.0).inner_margin(8.0).show(ui, |ui| {
-                        ui.add(egui::Label::new(RichText::new(t.lines().take(80).collect::<Vec<_>>().join("\n")).monospace().size(11.5)).selectable(true));
+                    egui::Frame::NONE.fill(theme::FIELD).corner_radius(8).inner_margin(10).show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.add(
+                            egui::Label::new(RichText::new(t.lines().take(80).collect::<Vec<_>>().join("\n")).monospace().size(11.5).color(theme::TEXT_2))
+                                .selectable(true),
+                        );
                     });
                     if *truncated || t.lines().count() > 80 {
-                        ui.label(RichText::new("(beginning shown)").small().weak());
+                        ui.label(RichText::new("Beginning shown").small().color(theme::TEXT_3));
                     }
-                }
-                Some(Shown::Lines(lines)) => {
-                    for l in lines {
-                        ui.label(RichText::new(l).small());
-                    }
+                    ui.add_space(6.0);
                 }
                 Some(Shown::Hex(h)) => {
-                    ui.label(RichText::new("Binary file").small().weak());
-                    ui.label(RichText::new(h).monospace().size(10.5));
+                    egui::Frame::NONE.fill(theme::FIELD).corner_radius(8).inner_margin(10).show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.label(RichText::new(h).monospace().size(10.5).color(theme::TEXT_2));
+                    });
+                    ui.add_space(6.0);
                 }
                 Some(Shown::Error(e)) => {
                     ui.label(RichText::new(e).small().color(common::ERR));
                 }
-                None => {}
+                _ => {}
             }
-            ui.add_space(10.0);
-            egui::Grid::new("facts").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+
+            divider(ui);
+            egui::Grid::new("facts").num_columns(2).spacing([14.0, 8.0]).show(ui, |ui| {
+                if let Some(Shown::Image(_, w, h)) = &self.details.shown {
+                    fact(ui, "Dimensions", &format!("{w} × {h}"));
+                }
                 if let Some(s) = item.size.filter(|_| !item.is_dir) {
                     fact(ui, "Size", &format!("{} ({} bytes)", common::human_size(s), group_digits(s)));
                 }
@@ -158,56 +181,87 @@ impl App {
                     fact(ui, "Packed", &common::human_size(p));
                 }
                 if let Some(m) = item.modified {
-                    fact(ui, "Modified", &m.format("%Y-%m-%d %H:%M").to_string());
+                    fact(ui, "Modified", &m.format("%b %-d, %Y at %H:%M").to_string());
                 }
                 if self.loc.folder().is_some() {
                     if let Ok(md) = std::fs::metadata(&item.path)
                         && let Ok(c) = md.created()
                     {
-                        fact(ui, "Created", &chrono::DateTime::<chrono::Local>::from(c).format("%Y-%m-%d %H:%M").to_string());
+                        fact(ui, "Created", &chrono::DateTime::<chrono::Local>::from(c).format("%b %-d, %Y at %H:%M").to_string());
                     }
-                    fact(ui, "Location", &item.path.parent().map(|p| p.display().to_string()).unwrap_or_default());
+                    fact(ui, "Where", &item.path.parent().map(|p| p.display().to_string()).unwrap_or_default());
                 }
             });
+            if let Some(Shown::Lines(lines)) = &self.details.shown {
+                divider(ui);
+                for l in lines {
+                    let indented = l.starts_with("  ");
+                    let color = if indented { theme::TEXT_3 } else { theme::TEXT_2 };
+                    ui.add(egui::Label::new(RichText::new(l.trim_start()).color(color)).truncate());
+                }
+            }
         });
     }
 
     fn folder_summary(&mut self, ui: &mut egui::Ui) {
-        ui.label(RichText::new("🗀").size(28.0));
-        ui.add(egui::Label::new(RichText::new(self.loc.title()).strong().size(15.0)).wrap());
+        let w = ui.available_width();
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 150.0), egui::Sense::hover());
+        ui.painter().rect_filled(rect, 10.0, theme::FIELD);
+        let in_archive = matches!(self.loc, Location::Archive { .. });
+        theme::paint_file_icon(ui.painter(), rect.center(), 64.0, if in_archive { Kind::Archive } else { Kind::Folder }, in_archive);
+        ui.add_space(12.0);
+        ui.add(egui::Label::new(RichText::new(self.loc.title()).font(theme::strong(15.0)).color(theme::TEXT)).wrap());
         let files = self.visible.iter().filter(|&&i| !self.items[i].is_dir).count();
         let folders = self.visible.len() - files;
         let size: u64 = self.visible.iter().filter_map(|&i| self.items[i].size.filter(|_| !self.items[i].is_dir)).sum();
-        ui.label(RichText::new(format!("{folders} folders, {files} files, {}", common::human_size(size))).small().weak());
-        if let (Location::Archive { .. }, Some((_, l))) = (&self.loc, &self.archive_listing) {
-            ui.add_space(8.0);
-            ui.label(RichText::new(format!("{} archive", l.kind.label())).small());
-            ui.label(RichText::new(format!("{} files, {} unpacked", l.file_count, common::human_size(l.total_size))).small());
-            if let Some(c) = l.total_compressed.filter(|c| *c > 0 && l.total_size > 0) {
-                ui.label(RichText::new(format!("{} packed ({:.0}%)", common::human_size(c), c as f64 / l.total_size as f64 * 100.0)).small());
+        ui.label(RichText::new(format!("{folders} folders, {files} files")).color(theme::TEXT_3));
+        ui.add_space(10.0);
+        divider(ui);
+        egui::Grid::new("folder-facts").num_columns(2).spacing([14.0, 8.0]).show(ui, |ui| {
+            fact(ui, "Files", &common::human_size(size));
+            if let (Location::Archive { .. }, Some((_, l))) = (&self.loc, &self.archive_listing) {
+                fact(ui, "Format", l.kind.label());
+                fact(ui, "Unpacked", &format!("{} in {} files", common::human_size(l.total_size), l.file_count));
+                if let Some(c) = l.total_compressed.filter(|c| *c > 0 && l.total_size > 0) {
+                    fact(ui, "Packed", &format!("{} ({:.0}%)", common::human_size(c), c as f64 / l.total_size as f64 * 100.0));
+                }
             }
-        }
-        ui.add_space(14.0);
-        ui.label(RichText::new("Select a file to preview it. Right-click for conversion, archive and rename tools.").small().weak());
+        });
+        ui.add_space(16.0);
+        ui.add(
+            egui::Label::new(RichText::new("Select a file to preview it. Right-click for conversion, archive and rename tools.").color(theme::TEXT_3)).wrap(),
+        );
     }
 
     fn multi_summary(&mut self, ui: &mut egui::Ui, sel: &[Item]) {
-        ui.label(RichText::new("🗐").size(28.0));
-        ui.label(RichText::new(format!("{} items selected", sel.len())).strong().size(15.0));
+        let w = ui.available_width();
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 150.0), egui::Sense::hover());
+        ui.painter().rect_filled(rect, 10.0, theme::FIELD);
+        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, crate::icons::FILES, egui::FontId::proportional(60.0), theme::TEXT_2);
+        let badge = egui::Rect::from_center_size(rect.center() + egui::vec2(30.0, -26.0), egui::vec2(30.0, 22.0));
+        ui.painter().rect_filled(badge, 11.0, theme::ACCENT);
+        ui.painter().text(badge.center(), egui::Align2::CENTER_CENTER, sel.len().to_string(), theme::strong(12.0), egui::Color32::WHITE);
+        ui.add_space(12.0);
+        ui.label(RichText::new(format!("{} items selected", sel.len())).font(theme::strong(15.0)).color(theme::TEXT));
         let size: u64 = sel.iter().filter(|i| !i.is_dir).filter_map(|i| i.size).sum();
-        ui.label(RichText::new(common::human_size(size)).small().weak());
+        ui.label(RichText::new(common::human_size(size)).color(theme::TEXT_3));
         ui.add_space(10.0);
-        let mut counts: Vec<(Kind, usize)> = Vec::new();
+        divider(ui);
+        let mut counts: Vec<(Kind, bool, usize)> = Vec::new();
         for i in sel {
             match counts.iter_mut().find(|c| c.0 == i.kind) {
-                Some(c) => c.1 += 1,
-                None => counts.push((i.kind, 1)),
+                Some(c) => c.2 += 1,
+                None => counts.push((i.kind, i.is_archive, 1)),
             }
         }
-        for (k, n) in counts {
+        for (k, archive, n) in counts {
             let label = k.label();
             let plural = if n == 1 || matches!(k, Kind::Audio | Kind::ChecksumList) { label.to_string() } else { format!("{label}s") };
-            ui.label(RichText::new(format!("{} {n} {plural}", k.icon(false))).small());
+            let (icon, color) = theme::file_icon(k, archive);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(icon).family(theme::fill_family()).size(15.0).color(color));
+                ui.label(RichText::new(format!("{n} {plural}")).color(theme::TEXT_2));
+            });
         }
     }
 
@@ -253,9 +307,15 @@ impl App {
 }
 
 fn fact(ui: &mut egui::Ui, k: &str, v: &str) {
-    ui.label(RichText::new(k).small().weak());
-    ui.add(egui::Label::new(RichText::new(v).small()).wrap());
+    ui.label(RichText::new(k).size(12.5).color(theme::TEXT_3));
+    ui.add(egui::Label::new(RichText::new(v).size(12.5).color(theme::TEXT_2)).wrap());
     ui.end_row();
+}
+
+fn divider(ui: &mut egui::Ui) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 1.0), egui::Sense::hover());
+    ui.painter().hline(rect.x_range(), rect.center().y, egui::Stroke::new(1.0, theme::BORDER));
+    ui.add_space(10.0);
 }
 
 fn group_digits(n: u64) -> String {

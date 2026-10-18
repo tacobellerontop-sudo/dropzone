@@ -159,7 +159,7 @@ impl RenameTab {
                         if let Some(m) = &item.message {
                             r.on_hover_text(m);
                         }
-                        if ui.small_button("🗙").clicked() {
+                        if ui.small_button(crate::icons::X).clicked() {
                             remove = Some(i);
                         }
                     });

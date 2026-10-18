@@ -99,37 +99,6 @@ impl Kind {
             Kind::Other => "file",
         }
     }
-
-    pub fn color(self) -> Color32 {
-        match self {
-            Kind::Image => Color32::from_rgb(14, 165, 233),
-            Kind::Video => Color32::from_rgb(192, 38, 211),
-            Kind::Audio => Color32::from_rgb(217, 119, 6),
-            Kind::Pdf => Color32::from_rgb(220, 38, 38),
-            Kind::Archive => Color32::from_rgb(22, 163, 74),
-            Kind::ChecksumList => Color32::from_rgb(100, 116, 139),
-            Kind::Folder => Color32::from_rgb(202, 138, 4),
-            Kind::Other => Color32::GRAY,
-        }
-    }
-}
-
-impl Kind {
-    pub fn icon(self, is_archive: bool) -> &'static str {
-        if is_archive {
-            return "📦";
-        }
-        match self {
-            Kind::Folder => "🗀",
-            Kind::Image => "🖼",
-            Kind::Video => "🎞",
-            Kind::Audio => "🎵",
-            Kind::Pdf => "📕",
-            Kind::Archive => "📦",
-            Kind::ChecksumList => "🔑",
-            Kind::Other => "📄",
-        }
-    }
 }
 
 /// A fixed-size table cell with its content aligned left (`add_sized` centers).
@@ -203,9 +172,9 @@ pub fn parse_time(s: &str) -> Option<f64> {
     Some(total)
 }
 
-pub const ERR: Color32 = Color32::from_rgb(220, 60, 60);
-pub const OK: Color32 = Color32::from_rgb(34, 160, 80);
-pub const WARN: Color32 = Color32::from_rgb(210, 140, 20);
+pub const ERR: Color32 = Color32::from_rgb(248, 113, 113);
+pub const OK: Color32 = Color32::from_rgb(74, 222, 128);
+pub const WARN: Color32 = Color32::from_rgb(251, 191, 36);
 
 #[cfg(test)]
 mod tests {

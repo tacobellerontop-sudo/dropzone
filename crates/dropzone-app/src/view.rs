@@ -7,52 +7,76 @@ use dropzone_core::ops::Operation;
 use eframe::egui::{self, Align, Color32, Layout, RichText, Sense, Vec2};
 
 use crate::app::{App, Renaming, ViewMode};
-use crate::common;
 use crate::nav::{Item, Location, SortKey};
 use crate::tools::OpKind;
+use crate::{common, icons, theme};
 
-const ROW_H: f32 = 28.0;
-const TILE: Vec2 = Vec2::new(116.0, 132.0);
+const ROW_H: f32 = 32.0;
+const TILE: Vec2 = Vec2::new(124.0, 146.0);
 
 impl App {
     pub fn toolbar(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         ui.horizontal(|ui| {
-            let nav_btn = |ui: &mut egui::Ui, enabled: bool, icon: &str, tip: &str| {
-                ui.add_enabled(enabled, egui::Button::new(RichText::new(icon).size(16.0)).frame(false).min_size(Vec2::new(28.0, 28.0)))
-                    .on_hover_text(tip)
-                    .clicked()
-            };
-            if nav_btn(ui, !self.back.is_empty(), "⬅", "Back (Alt+Left)") {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            if theme::icon_button(ui, icons::ARROW_LEFT, !self.back.is_empty(), false, "Back (Alt+Left)").clicked() {
                 self.go_back(&ctx);
             }
-            if nav_btn(ui, !self.fwd.is_empty(), "➡", "Forward (Alt+Right)") {
+            if theme::icon_button(ui, icons::ARROW_RIGHT, !self.fwd.is_empty(), false, "Forward (Alt+Right)").clicked() {
                 self.go_forward(&ctx);
             }
-            if nav_btn(ui, self.loc.parent().is_some(), "⬆", "Up (Backspace)") {
+            if theme::icon_button(ui, icons::ARROW_UP, self.loc.parent().is_some(), false, "Up (Backspace)").clicked() {
                 self.go_up(&ctx);
             }
-            if nav_btn(ui, true, "⟳", "Refresh (F5)") {
+            if theme::icon_button(ui, icons::ARROW_CLOCKWISE, true, false, "Refresh (F5)").clicked() {
                 self.reload(&ctx);
             }
-            ui.add_space(4.0);
+            ui.add_space(8.0);
 
             // Right side first so the path bar can take whatever is left.
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let details_on = self.settings.details_open;
-                if ui.add(egui::Button::selectable(details_on, "ℹ")).on_hover_text("Details pane").clicked() {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                let details_on = self.settings.details_open && self.tool.is_none();
+                if theme::icon_button(ui, icons::SIDEBAR_SIMPLE, true, details_on, "Details pane").clicked() {
                     self.settings.details_open = !details_on;
                     self.tool = None;
                 }
-                let grid = self.settings.view == ViewMode::Grid;
-                if ui.add(egui::Button::selectable(grid, "⊞")).on_hover_text("Thumbnails").clicked() {
-                    self.settings.view = ViewMode::Grid;
-                }
-                if ui.add(egui::Button::selectable(!grid, "☰")).on_hover_text("Details list").clicked() {
-                    self.settings.view = ViewMode::List;
-                }
-                ui.menu_button("Tools ⏷", |ui| self.tools_menu(ui));
-                let search = ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text("🔍 Search this folder").desired_width(200.0));
+
+                // List / grid as a two-way segmented control.
+                egui::Frame::NONE.fill(theme::FIELD).corner_radius(theme::RADIUS + 1).inner_margin(2).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    let grid = self.settings.view == ViewMode::Grid;
+                    if theme::icon_button(ui, icons::SQUARES_FOUR, true, grid, "Thumbnails").clicked() {
+                        self.settings.view = ViewMode::Grid;
+                    }
+                    if theme::icon_button(ui, icons::ROWS, true, !grid, "Details list").clicked() {
+                        self.settings.view = ViewMode::List;
+                    }
+                });
+
+                let tools = egui::Button::new(format!("{}  Tools  {}", icons::MAGIC_WAND, icons::CARET_DOWN)).min_size(Vec2::new(0.0, 34.0));
+                egui::containers::menu::MenuButton::from_button(tools).ui(ui, |ui| self.tools_menu(ui));
+
+                self.search_box(ui);
+                self.path_bar(ui);
+            });
+        });
+    }
+
+    fn search_box(&mut self, ui: &mut egui::Ui) {
+        egui::Frame::NONE.fill(theme::FIELD).corner_radius(theme::RADIUS + 1).inner_margin(egui::Margin::symmetric(10, 0)).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.allocate_ui_with_layout(Vec2::new(190.0, 34.0), Layout::left_to_right(Align::Center), |ui| {
+                ui.set_min_size(Vec2::new(190.0, 34.0));
+                ui.label(RichText::new(icons::MAGNIFYING_GLASS).size(15.0).color(theme::TEXT_3));
+                let search = ui.add(
+                    egui::TextEdit::singleline(&mut self.filter)
+                        .hint_text(RichText::new("Search").color(theme::TEXT_3))
+                        .frame(egui::Frame::NONE)
+                        .align(egui::Align2::LEFT_CENTER)
+                        .min_size(Vec2::new(0.0, 34.0))
+                        .desired_width(160.0),
+                );
                 if self.focus_search {
                     search.request_focus();
                     self.focus_search = false;
@@ -65,7 +89,6 @@ impl App {
                     self.visible_dirty = true;
                     search.surrender_focus();
                 }
-                self.path_bar(ui);
             });
         });
     }
@@ -73,52 +96,66 @@ impl App {
     fn path_bar(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let width = ui.available_width();
-        if let Some(text) = &mut self.path_edit {
-            let r = ui.add(egui::TextEdit::singleline(text).desired_width(width).font(egui::TextStyle::Body));
-            if !r.has_focus() && !r.lost_focus() {
-                r.request_focus();
-            }
-            if r.lost_focus() {
-                let entered = text.trim().to_string();
-                self.path_edit = None;
-                if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !entered.is_empty() {
-                    let p = PathBuf::from(expand_home(&entered));
-                    if p.is_dir() {
-                        self.navigate(&ctx, Location::Folder(p));
-                    } else if p.is_file() && dropzone_core::archive::is_archive(&p) {
-                        self.navigate(&ctx, Location::Archive { archive: ArchiveRef::file(p), dir: String::new() });
-                    } else if p.is_file() {
-                        common::open_path(&p);
-                    } else {
-                        self.error(format!("Can't find {entered}"));
+        let frame = egui::Frame::NONE.fill(theme::FIELD).corner_radius(theme::RADIUS + 1).inner_margin(egui::Margin::symmetric(10, 0));
+        if let Some(mut text) = self.path_edit.take() {
+            let mut keep = true;
+            let mut entered = None;
+            frame.stroke(egui::Stroke::new(1.0, theme::ACCENT)).show(ui, |ui| {
+                ui.allocate_ui_with_layout(Vec2::new((width - 22.0).max(40.0), 32.0), Layout::left_to_right(Align::Center), |ui| {
+                    ui.set_min_size(Vec2::new((width - 22.0).max(40.0), 32.0));
+                    let r = ui.add(egui::TextEdit::singleline(&mut text).frame(egui::Frame::NONE).desired_width(f32::INFINITY));
+                    if !r.has_focus() && !r.lost_focus() {
+                        r.request_focus();
                     }
+                    if r.lost_focus() {
+                        keep = false;
+                        if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            entered = Some(text.trim().to_string()).filter(|t| !t.is_empty());
+                        }
+                    }
+                });
+            });
+            if keep {
+                self.path_edit = Some(text);
+            }
+            if let Some(entered) = entered {
+                let p = PathBuf::from(expand_home(&entered));
+                if p.is_dir() {
+                    self.navigate(&ctx, Location::Folder(p));
+                } else if p.is_file() && dropzone_core::archive::is_archive(&p) {
+                    self.navigate(&ctx, Location::Archive { archive: ArchiveRef::file(p), dir: String::new() });
+                } else if p.is_file() {
+                    common::open_path(&p);
+                } else {
+                    self.error(format!("Can't find {entered}"));
                 }
             }
             return;
         }
-        // Breadcrumbs in a frame that looks like a text box; click the empty part to type a path.
-        let frame = egui::Frame::NONE
-            .fill(ui.visuals().extreme_bg_color)
-            .stroke(ui.visuals().widgets.inactive.bg_stroke)
-            .corner_radius(6.0)
-            .inner_margin(egui::Margin::symmetric(6, 2));
+        // Breadcrumbs in a pill; click the empty part to type a path.
         let resp = frame.show(ui, |ui| {
-            ui.set_width(width - 14.0);
-            ui.set_height(24.0);
             let mut target = None;
             // The toolbar lays out right-to-left; crumbs read left-to-right.
-            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+            ui.allocate_ui_with_layout(Vec2::new((width - 20.0).max(40.0), 34.0), Layout::left_to_right(Align::Center), |ui| {
+                ui.set_min_size(Vec2::new((width - 20.0).max(40.0), 34.0));
+                ui.spacing_mut().item_spacing.x = 2.0;
+                let in_archive = matches!(self.loc, Location::Archive { .. });
+                let icon = if in_archive { icons::FILE_ZIP } else { icons::FOLDER_OPEN };
+                ui.label(RichText::new(icon).size(15.0).color(theme::TEXT_3));
+                ui.add_space(4.0);
                 let crumbs = self.loc.crumbs();
+                let last = crumbs.len().saturating_sub(1);
                 // Keep the tail visible when the path is long.
-                let skip = crumbs.len().saturating_sub(6);
+                let skip = crumbs.len().saturating_sub(5);
                 if skip > 0 {
-                    ui.label(RichText::new("…").weak());
+                    ui.label(RichText::new("…").color(theme::TEXT_3));
                 }
                 for (i, (label, loc)) in crumbs.into_iter().enumerate().skip(skip) {
                     if i > skip || skip > 0 {
-                        ui.label(RichText::new("›").weak());
+                        ui.label(RichText::new(icons::CARET_RIGHT).size(11.0).color(theme::TEXT_3));
                     }
-                    if ui.add(egui::Button::new(label).frame(false).small()).clicked() {
+                    let text = if i == last { RichText::new(label).color(theme::TEXT) } else { RichText::new(label).color(theme::TEXT_2) };
+                    if ui.add(egui::Button::new(text).frame_when_inactive(false).min_size(Vec2::new(0.0, 26.0))).clicked() {
                         target = Some(loc);
                     }
                 }
@@ -174,29 +211,26 @@ impl App {
 
     fn header(&mut self, ui: &mut egui::Ui, widths: &[f32; 4], archive: bool) {
         let cols: [(SortKey, &str); 4] =
-            [(SortKey::Name, "Name"), (SortKey::Modified, "Date modified"), (SortKey::Type, if archive { "Packed" } else { "Type" }), (SortKey::Size, "Size")];
+            [(SortKey::Name, "Name"), (SortKey::Modified, "Modified"), (SortKey::Type, if archive { "Packed" } else { "Type" }), (SortKey::Size, "Size")];
         // Painted at the same x positions as the rows so the columns line up.
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 22.0), Sense::hover());
-        let mut x = rect.left() + 8.0;
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::hover());
+        let mut x = rect.left() + 10.0;
         for (i, (key, label)) in cols.iter().enumerate() {
             let active = self.settings.sort_key == *key;
-            let arrow = if !active {
-                ""
-            } else if self.settings.sort_asc {
-                " ⏶"
-            } else {
-                " ⏷"
-            };
             let cell = egui::Rect::from_min_size(egui::pos2(x, rect.top()), Vec2::new(widths[i], rect.height()));
             let r = ui.interact(cell, ui.scope_id().with(("header", i)), Sense::click());
-            let color = if r.hovered() || active { ui.visuals().text_color() } else { ui.visuals().weak_text_color() };
-            let font = egui::FontId::proportional(12.0);
-            let (pos, align) = if i == 3 {
-                (egui::pos2(cell.right() - 4.0, cell.center().y), egui::Align2::RIGHT_CENTER)
-            } else {
-                (egui::pos2(x + if i == 0 { 24.0 } else { 0.0 }, cell.center().y), egui::Align2::LEFT_CENTER)
-            };
-            ui.painter().text(pos, align, format!("{label}{arrow}"), font, color);
+            let color = if active || r.hovered() { theme::TEXT_2 } else { theme::TEXT_3 };
+            let font = theme::strong(11.5);
+            let label_x = if i == 0 { x + 30.0 } else { x };
+            let galley = ui.painter().layout_no_wrap(label.to_string(), font, color);
+            let w = galley.size().x;
+            let pos = if i == 3 { egui::pos2(cell.right() - 10.0 - w, cell.center().y) } else { egui::pos2(label_x, cell.center().y) };
+            ui.painter().galley(pos - Vec2::new(0.0, galley.size().y / 2.0), galley, color);
+            if active {
+                let caret = if self.settings.sort_asc { icons::CARET_UP } else { icons::CARET_DOWN };
+                let cx = if i == 3 { pos.x - 9.0 } else { pos.x + w + 9.0 };
+                ui.painter().text(egui::pos2(cx, cell.center().y), egui::Align2::CENTER_CENTER, caret, egui::FontId::proportional(10.0), color);
+            }
             if r.clicked() {
                 if active {
                     self.settings.sort_asc = !self.settings.sort_asc;
@@ -208,14 +242,15 @@ impl App {
             }
             x += widths[i];
         }
-        ui.separator();
+        ui.painter().hline(rect.x_range().shrink(4.0), rect.bottom(), egui::Stroke::new(1.0, theme::BORDER));
+        ui.add_space(4.0);
     }
 
     fn list_view(&mut self, ui: &mut egui::Ui) {
         let archive = matches!(self.loc, Location::Archive { .. });
         let total_w = ui.available_width();
-        let fixed = [150.0, 110.0, 90.0];
-        let name_w = (total_w - fixed.iter().sum::<f32>() - 40.0).max(160.0);
+        let fixed = [150.0, 120.0, 90.0];
+        let name_w = (total_w - fixed.iter().sum::<f32>() - 30.0).max(160.0);
         let widths = [name_w, fixed[0], fixed[1], fixed[2]];
         self.header(ui, &widths, archive);
 
@@ -262,38 +297,38 @@ impl App {
         let ctx = ui.ctx().clone();
         let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::click());
         let selected = self.selection.contains(&item.key);
-        let cut = self.is_cut(item);
+        let dim = self.is_cut(item) || item.hidden;
         paint_row_bg(ui, rect, selected, resp.hovered());
 
-        let mut x = rect.left() + 8.0;
+        let mut x = rect.left() + 10.0;
         let painter = ui.painter_at(rect);
-        let text_color = if cut || item.hidden { ui.visuals().weak_text_color() } else { ui.visuals().text_color() };
-        let weak = ui.visuals().weak_text_color();
-        let font = egui::FontId::proportional(14.0);
+        let text_color = if dim { theme::TEXT_3 } else { theme::TEXT };
+        let font = egui::FontId::proportional(13.5);
         let small = egui::FontId::proportional(12.5);
         let cy = rect.center().y;
 
         // Name column (or the inline rename box).
-        painter.text(egui::pos2(x, cy), egui::Align2::LEFT_CENTER, item.kind.icon(item.is_archive), font.clone(), item.kind.color());
-        let name_x = x + 24.0;
+        theme::paint_file_icon(&painter, egui::pos2(x + 10.0, cy), 18.0, item.kind, item.is_archive);
+        let name_x = x + 30.0;
         if self.renaming.as_ref().is_some_and(|r| r.key == item.key) {
-            let r = egui::Rect::from_min_size(egui::pos2(name_x, rect.top() + 2.0), Vec2::new(widths[0] - 30.0, ROW_H - 4.0));
+            let r = egui::Rect::from_min_size(egui::pos2(name_x - 4.0, rect.top() + 3.0), Vec2::new(widths[0] - 36.0, ROW_H - 6.0));
             self.rename_box(ui, r);
         } else {
-            let mut name = item.name.clone();
-            if item.encrypted {
-                name.push_str("  🔒");
-            }
-            let galley = ui.painter().layout(name, font.clone(), text_color, f32::INFINITY);
-            let clip = egui::Rect::from_min_max(egui::pos2(name_x, rect.top()), egui::pos2(x + widths[0] - 8.0, rect.bottom()));
+            let galley = ui.painter().layout_no_wrap(item.name.clone(), font.clone(), text_color);
+            let clip = egui::Rect::from_min_max(egui::pos2(name_x, rect.top()), egui::pos2(x + widths[0] - 12.0, rect.bottom()));
+            let name_w = galley.size().x;
             ui.painter_at(clip).galley(egui::pos2(name_x, cy - galley.size().y / 2.0), galley, text_color);
+            if item.encrypted {
+                let lx = (name_x + name_w + 12.0).min(clip.right() - 4.0);
+                painter.text(egui::pos2(lx, cy), egui::Align2::CENTER_CENTER, icons::LOCK_SIMPLE, egui::FontId::proportional(13.0), common::WARN);
+            }
         }
         x += widths[0];
-        let modified = item.modified.map(|m| m.format("%Y-%m-%d %H:%M").to_string()).unwrap_or_default();
-        painter.text(egui::pos2(x, cy), egui::Align2::LEFT_CENTER, modified, small.clone(), weak);
+        let modified = item.modified.map(|m| m.format("%b %-d, %Y  %H:%M").to_string()).unwrap_or_default();
+        painter.text(egui::pos2(x, cy), egui::Align2::LEFT_CENTER, modified, small.clone(), theme::TEXT_2);
         x += widths[1];
         let third = if archive { item.packed.map(common::human_size).unwrap_or_default() } else { item.type_label() };
-        painter.text(egui::pos2(x, cy), egui::Align2::LEFT_CENTER, third, small.clone(), weak);
+        painter.text(egui::pos2(x, cy), egui::Align2::LEFT_CENTER, third, small.clone(), theme::TEXT_2);
         x += widths[2];
         let size = match (item.is_dir, item.size) {
             (true, Some(s)) if s > 0 => common::human_size(s),
@@ -301,7 +336,7 @@ impl App {
             (false, Some(s)) => common::human_size(s),
             _ => String::new(),
         };
-        painter.text(egui::pos2(x + widths[3] - 4.0, cy), egui::Align2::RIGHT_CENTER, size, small, weak);
+        painter.text(egui::pos2(x + widths[3] - 10.0, cy), egui::Align2::RIGHT_CENTER, size, small, theme::TEXT_2);
 
         self.item_interaction(&ctx, ui, &resp, item);
     }
@@ -339,31 +374,24 @@ impl App {
         let ctx = ui.ctx().clone();
         let (rect, resp) = ui.allocate_exact_size(TILE - Vec2::new(0.0, ui.spacing().item_spacing.y), Sense::click());
         let selected = self.selection.contains(&item.key);
-        paint_row_bg(ui, rect.shrink(3.0), selected, resp.hovered());
-        let thumb_rect = egui::Rect::from_center_size(egui::pos2(rect.center().x, rect.top() + 52.0), Vec2::splat(88.0));
+        paint_row_bg(ui, rect.shrink(4.0), selected, resp.hovered());
+        let thumb_rect = egui::Rect::from_center_size(egui::pos2(rect.center().x, rect.top() + 54.0), Vec2::splat(84.0));
         let thumb = if item.kind == common::Kind::Image && self.loc.folder().is_some() { self.thumbs.get(&item.path, item.size.unwrap_or(0)) } else { None };
         match thumb {
             Some(tex) => {
                 let size = tex.size_vec2();
-                let scale = (88.0 / size.x).min(88.0 / size.y);
+                let scale = (84.0 / size.x).min(84.0 / size.y);
                 let r = egui::Rect::from_center_size(thumb_rect.center(), size * scale);
-                ui.painter().image(tex.id(), r, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
+                ui.painter().rect_filled(r.expand(1.0), 7.0, theme::BORDER);
+                egui::Image::from_texture(&tex).corner_radius(6).paint_at(ui, r);
             }
-            None => {
-                ui.painter().text(
-                    thumb_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    item.kind.icon(item.is_archive),
-                    egui::FontId::proportional(44.0),
-                    item.kind.color(),
-                );
-            }
+            None => theme::paint_file_icon(ui.painter(), thumb_rect.center(), 58.0, item.kind, item.is_archive),
         }
-        let name_rect = egui::Rect::from_min_max(egui::pos2(rect.left() + 6.0, rect.top() + 100.0), egui::pos2(rect.right() - 6.0, rect.bottom() - 2.0));
+        let name_rect = egui::Rect::from_min_max(egui::pos2(rect.left() + 8.0, rect.top() + 102.0), egui::pos2(rect.right() - 8.0, rect.bottom() - 4.0));
         if self.renaming.as_ref().is_some_and(|r| r.key == item.key) {
-            self.rename_box(ui, name_rect.with_max_y(name_rect.top() + 24.0));
+            self.rename_box(ui, name_rect.with_max_y(name_rect.top() + 26.0));
         } else {
-            let color = if self.is_cut(item) || item.hidden { ui.visuals().weak_text_color() } else { ui.visuals().text_color() };
+            let color = if self.is_cut(item) || item.hidden { theme::TEXT_3 } else { theme::TEXT };
             let mut job = egui::text::LayoutJob::simple(item.name.clone(), egui::FontId::proportional(12.5), color, name_rect.width());
             job.wrap.max_rows = 2;
             job.wrap.break_anywhere = true;
@@ -443,58 +471,58 @@ impl App {
         let Some(first) = sel.first().cloned() else { return };
         let in_archive = matches!(self.loc, Location::Archive { .. });
 
-        if ui.button("Open").clicked() {
+        if ui.add(theme::menu_item_key(icons::ARROW_SQUARE_OUT, "Open", "Enter")).clicked() {
             for it in &sel {
                 self.open_item(&ctx, &it.key);
             }
             ui.close();
         }
         if in_archive {
-            if ui.button("Extract…").clicked() {
+            if ui.add(theme::menu_item(icons::TRAY_ARROW_DOWN, "Extract…")).clicked() {
                 self.extract_from_archive(Some(sel.iter().map(|i| i.key.clone()).collect()), None);
                 ui.close();
             }
-            if ui.button("Copy name").clicked() {
+            if ui.add(theme::menu_item(icons::CLIPBOARD, "Copy name")).clicked() {
                 ui.ctx().copy_text(sel.iter().map(|i| i.key.clone()).collect::<Vec<_>>().join("\n"));
                 ui.close();
             }
             return;
         }
-        if sel.len() == 1 && first.is_dir && ui.button("Open in system file manager").clicked() {
+        if sel.len() == 1 && first.is_dir && ui.add(theme::menu_item(icons::FOLDER_OPEN, "Open in system file manager")).clicked() {
             common::open_path(&first.path);
             ui.close();
         }
-        if ui.button("Show in system file manager").clicked() {
+        if ui.add(theme::menu_item(icons::FOLDER_OPEN, "Show in system file manager")).clicked() {
             common::reveal(&first.path);
             ui.close();
         }
         ui.separator();
-        if ui.button("Cut          Ctrl+X").clicked() {
+        if ui.add(theme::menu_item_key(icons::SCISSORS, "Cut", "Ctrl+X")).clicked() {
             self.copy_selection(true);
             ui.close();
         }
-        if ui.button("Copy        Ctrl+C").clicked() {
+        if ui.add(theme::menu_item_key(icons::COPY, "Copy", "Ctrl+C")).clicked() {
             self.copy_selection(false);
             ui.close();
         }
-        if sel.len() == 1 && first.is_dir && self.clip.is_some() && ui.button("Paste into folder").clicked() {
+        if sel.len() == 1 && first.is_dir && self.clip.is_some() && ui.add(theme::menu_item(icons::CLIPBOARD, "Paste into folder")).clicked() {
             self.paste_into(first.path.clone());
             ui.close();
         }
-        if ui.button("Copy path").clicked() {
+        if ui.add(theme::menu_item(icons::LINK, "Copy path")).clicked() {
             ui.ctx().copy_text(sel.iter().map(|i| i.path.display().to_string()).collect::<Vec<_>>().join("\n"));
             ui.close();
         }
         ui.separator();
-        if sel.len() == 1 && ui.button("Rename       F2").clicked() {
+        if sel.len() == 1 && ui.add(theme::menu_item_key(icons::PENCIL_SIMPLE, "Rename", "F2")).clicked() {
             self.start_rename();
             ui.close();
         }
-        if sel.len() > 1 && ui.button(format!("Batch rename {} items…", sel.len())).clicked() {
+        if sel.len() > 1 && ui.add(theme::menu_item_key(icons::TEXT_AA, &format!("Batch rename {} items…", sel.len()), "F2")).clicked() {
             self.open_rename_window();
             ui.close();
         }
-        if ui.button("Delete         Del").clicked() {
+        if ui.add(theme::menu_item_key(icons::TRASH, "Delete", "Del")).clicked() {
             self.ask_delete();
             ui.close();
         }
@@ -503,36 +531,36 @@ impl App {
         ui.separator();
         let archives: Vec<PathBuf> = sel.iter().filter(|i| i.is_archive).map(|i| i.path.clone()).collect();
         if !archives.is_empty() {
-            if ui.button("Extract here").clicked() {
+            if ui.add(theme::menu_item(icons::TRAY_ARROW_DOWN, "Extract here")).clicked() {
                 let opts = ExtractOptions { into_subfolder: true, ..Default::default() };
                 let n = archives.len();
                 self.enqueue(archives.clone(), Operation::ExtractArchive { options: opts, inner: vec![] }, None);
                 self.toast(format!("Extracting {n} archive(s)"));
                 ui.close();
             }
-            if ui.button("Extract to…").clicked() {
+            if ui.add(theme::menu_item(icons::FOLDER_OPEN, "Extract to…")).clicked() {
                 if let Some(dest) = common::pick_folder("Extract to") {
                     self.enqueue(archives.clone(), Operation::ExtractArchive { options: ExtractOptions::default(), inner: vec![] }, Some(dest));
                 }
                 ui.close();
             }
-            if ui.button("Test integrity").clicked() {
+            if ui.add(theme::menu_item(icons::SHIELD_CHECK, "Test integrity")).clicked() {
                 let ids = self.enqueue(archives.clone(), Operation::VerifyArchive { password: None, recursive: true }, None);
                 self.track_verify(ids);
                 ui.close();
             }
         }
-        if ui.button("Compress to ZIP").clicked() {
+        if ui.add(theme::menu_item(icons::FILE_ZIP, "Compress to ZIP")).clicked() {
             let paths: Vec<PathBuf> = sel.iter().map(|i| i.path.clone()).collect();
             self.enqueue(paths, Operation::CreateArchive { options: Default::default() }, None);
             self.toast("Creating ZIP");
             ui.close();
         }
-        if ui.button("Compress…").clicked() {
+        if ui.add(theme::menu_item(icons::PACKAGE, "Compress…")).clicked() {
             self.open_tool(OpKind::Create);
             ui.close();
         }
-        if ui.button("Checksums").clicked() {
+        if ui.add(theme::menu_item(icons::FINGERPRINT, "Checksums")).clicked() {
             let paths: Vec<PathBuf> = sel.iter().filter(|i| !i.is_dir).map(|i| i.path.clone()).collect();
             if !paths.is_empty() {
                 self.enqueue(
@@ -549,7 +577,7 @@ impl App {
         if sel.len() == 1 && first.is_dir {
             ui.separator();
             let pinned = self.settings.pinned.contains(&first.path);
-            if ui.button(if pinned { "Unpin from sidebar" } else { "Pin to sidebar" }).clicked() {
+            if ui.add(theme::menu_item(icons::PUSH_PIN, if pinned { "Unpin from sidebar" } else { "Pin to sidebar" })).clicked() {
                 if pinned {
                     self.settings.pinned.retain(|p| *p != first.path);
                 } else {
@@ -563,25 +591,25 @@ impl App {
     /// Conversion entries that apply to the selection.
     fn convert_entries(&mut self, ui: &mut egui::Ui, sel: &[Item]) {
         let has = |k: common::Kind| sel.iter().any(|i| i.kind == k);
-        if has(common::Kind::Image) && ui.button("Convert / compress images…").clicked() {
+        if has(common::Kind::Image) && ui.add(theme::menu_item(icons::IMAGE, "Convert / compress images…")).clicked() {
             self.open_tool(OpKind::Image);
             ui.close();
         }
-        if (has(common::Kind::Video) || has(common::Kind::Audio)) && ui.button("Convert audio / video…").clicked() {
+        if (has(common::Kind::Video) || has(common::Kind::Audio)) && ui.add(theme::menu_item(icons::FILM_STRIP, "Convert audio / video…")).clicked() {
             self.open_tool(OpKind::Media);
             ui.close();
         }
         if has(common::Kind::Pdf) {
-            if ui.button("PDF: extract or split pages…").clicked() {
+            if ui.add(theme::menu_item(icons::FILE_PDF, "Extract or split PDF pages…")).clicked() {
                 self.open_tool(OpKind::PdfPages);
                 ui.close();
             }
-            if ui.button("PDF: extract images…").clicked() {
+            if ui.add(theme::menu_item(icons::IMAGE, "Extract images from PDF…")).clicked() {
                 self.open_tool(OpKind::PdfImages);
                 ui.close();
             }
         }
-        if has(common::Kind::ChecksumList) && ui.button("Verify checksum list").clicked() {
+        if has(common::Kind::ChecksumList) && ui.add(theme::menu_item(icons::LIST_CHECKS, "Verify checksum list")).clicked() {
             let paths = sel.iter().filter(|i| i.kind == common::Kind::ChecksumList).map(|i| i.path.clone()).collect();
             self.enqueue(paths, Operation::VerifyChecksums, None);
             self.queue_open = true;
@@ -592,24 +620,24 @@ impl App {
     pub fn tools_menu(&mut self, ui: &mut egui::Ui) {
         let in_folder = self.loc.folder().is_some();
         ui.add_enabled_ui(in_folder, |ui| {
-            for (op, label) in [
-                (OpKind::Image, "Convert / compress images"),
-                (OpKind::Media, "Convert audio / video"),
-                (OpKind::PdfPages, "PDF: extract or split pages"),
-                (OpKind::PdfImages, "PDF: extract images"),
-                (OpKind::Extract, "Extract archives"),
-                (OpKind::Verify, "Test archives"),
-                (OpKind::Create, "Create archive"),
-                (OpKind::Checksum, "Checksums"),
-                (OpKind::VerifyChecksums, "Verify checksum list"),
+            for (op, icon, label) in [
+                (OpKind::Image, icons::IMAGE, "Convert / compress images"),
+                (OpKind::Media, icons::FILM_STRIP, "Convert audio / video"),
+                (OpKind::PdfPages, icons::FILE_PDF, "Extract or split PDF pages"),
+                (OpKind::PdfImages, icons::IMAGE, "Extract images from PDFs"),
+                (OpKind::Extract, icons::TRAY_ARROW_DOWN, "Extract archives"),
+                (OpKind::Verify, icons::SHIELD_CHECK, "Test archives"),
+                (OpKind::Create, icons::PACKAGE, "Create archive"),
+                (OpKind::Checksum, icons::FINGERPRINT, "Checksums"),
+                (OpKind::VerifyChecksums, icons::LIST_CHECKS, "Verify checksum list"),
             ] {
-                if ui.button(label).clicked() {
+                if ui.add(theme::menu_item(icon, label)).clicked() {
                     self.open_tool(op);
                     ui.close();
                 }
             }
             ui.separator();
-            if ui.button("Batch rename").clicked() {
+            if ui.add(theme::menu_item(icons::TEXT_AA, "Batch rename")).clicked() {
                 self.open_rename_window();
                 ui.close();
             }
@@ -620,7 +648,7 @@ impl App {
             self.settings.show_hidden = hidden;
             self.visible_dirty = true;
         }
-        if ui.button("Queue").clicked() {
+        if ui.add(theme::menu_item(icons::STACK, "Queue")).clicked() {
             self.queue_open = true;
             ui.close();
         }
@@ -629,21 +657,21 @@ impl App {
     fn background_menu(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let Some(dir) = self.loc.folder().map(|p| p.to_path_buf()) else {
-            if ui.button("Extract all…").clicked() {
+            if ui.add(theme::menu_item(icons::TRAY_ARROW_DOWN, "Extract all…")).clicked() {
                 self.extract_from_archive(None, None);
                 ui.close();
             }
             return;
         };
-        if ui.button("New folder    Ctrl+Shift+N").clicked() {
+        if ui.add(theme::menu_item_key(icons::FOLDER_PLUS, "New folder", "Ctrl+Shift+N")).clicked() {
             self.new_folder(&ctx);
             ui.close();
         }
-        if ui.add_enabled(self.clip.is_some(), egui::Button::new("Paste           Ctrl+V")).clicked() {
+        if ui.add_enabled(self.clip.is_some(), theme::menu_item_key(icons::CLIPBOARD, "Paste", "Ctrl+V")).clicked() {
             self.paste();
             ui.close();
         }
-        if ui.button("Refresh          F5").clicked() {
+        if ui.add(theme::menu_item_key(icons::ARROW_CLOCKWISE, "Refresh", "F5")).clicked() {
             self.reload(&ctx);
             ui.close();
         }
@@ -653,11 +681,11 @@ impl App {
             self.settings.show_hidden = hidden;
             self.visible_dirty = true;
         }
-        if ui.button("Open in system file manager").clicked() {
+        if ui.add(theme::menu_item(icons::FOLDER_OPEN, "Open in system file manager")).clicked() {
             common::open_path(&dir);
             ui.close();
         }
-        if ui.button("Copy folder path").clicked() {
+        if ui.add(theme::menu_item(icons::LINK, "Copy folder path")).clicked() {
             ui.ctx().copy_text(dir.display().to_string());
             ui.close();
         }
@@ -758,10 +786,13 @@ impl App {
             ui.set_width(360.0);
             let what = if paths.len() == 1 { format!("\"{}\"", common::file_name(&paths[0])) } else { format!("{} items", paths.len()) };
             ui.heading(format!("Move {what} to the Recycle Bin?"));
-            ui.add_space(10.0);
+            ui.add_space(4.0);
+            ui.label(RichText::new("You can restore it from there.").color(theme::TEXT_2));
+            ui.add_space(14.0);
             ui.horizontal(|ui| {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let del = ui.add(egui::Button::new(RichText::new("Delete").strong().color(Color32::WHITE)).fill(common::ERR));
+                    let del =
+                        ui.add(egui::Button::new(RichText::new("Delete").font(theme::strong(13.5)).color(Color32::WHITE)).fill(Color32::from_rgb(220, 64, 64)));
                     if del.clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                         let p = paths.clone();
                         self.side_task = crate::common::Task::spawn(ctx, move || {
@@ -783,11 +814,10 @@ impl App {
 }
 
 fn paint_row_bg(ui: &egui::Ui, rect: egui::Rect, selected: bool, hovered: bool) {
-    let accent = ui.visuals().selection.bg_fill;
     if selected {
-        ui.painter().rect_filled(rect, 6.0, accent.gamma_multiply(0.28));
+        ui.painter().rect_filled(rect, theme::RADIUS, theme::accent_tint(if hovered { 56 } else { 44 }));
     } else if hovered {
-        ui.painter().rect_filled(rect, 6.0, ui.visuals().widgets.hovered.weak_bg_fill.gamma_multiply(0.7));
+        ui.painter().rect_filled(rect, theme::RADIUS, Color32::from_white_alpha(7));
     }
 }
 

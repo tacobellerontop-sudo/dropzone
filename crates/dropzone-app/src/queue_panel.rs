@@ -13,15 +13,15 @@ pub fn ui(ui: &mut egui::Ui, app: &mut App) {
     let any_finished = app.jobs.iter().any(|j| j.status.is_finished());
 
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Queue").strong());
+        ui.label(RichText::new(format!("{}  Queue", crate::icons::STACK)).font(crate::theme::strong(14.0)).color(crate::theme::TEXT));
         let summary = if empty {
             "Nothing queued. Right-click files or use Tools to start something.".to_string()
         } else {
-            format!("{running} running · {queued} waiting · {done} done · {failed} failed")
+            format!("{running} running, {queued} waiting, {done} done, {failed} failed")
         };
         ui.label(RichText::new(summary).small().weak());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.add(egui::Button::new("🗙").frame(false)).on_hover_text("Hide").clicked() {
+            if crate::theme::icon_button(ui, crate::icons::X, true, false, "Hide").clicked() {
                 app.queue_open = false;
             }
             if ui.add_enabled(any_finished, egui::Button::new("Clear finished").small()).clicked() {
@@ -47,17 +47,18 @@ pub fn ui(ui: &mut egui::Ui, app: &mut App) {
 }
 
 fn job_card(ui: &mut egui::Ui, queue: &JobQueue, job: &JobInfo) {
-    egui::Frame::NONE.fill(ui.visuals().faint_bg_color).corner_radius(6.0).inner_margin(8.0).show(ui, |ui| {
+    egui::Frame::NONE.fill(crate::theme::FIELD).corner_radius(8).inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
-            let (label, color) = match job.status {
-                JobStatus::Queued => ("waiting", ui.visuals().weak_text_color()),
-                JobStatus::Running => ("running", ui.visuals().selection.bg_fill),
-                JobStatus::Done => ("done", common::OK),
-                JobStatus::Failed => ("failed", common::ERR),
-                JobStatus::Cancelled => ("cancelled", ui.visuals().weak_text_color()),
+            use crate::{icons, theme};
+            let (icon, color) = match job.status {
+                JobStatus::Queued => (icons::STACK, theme::TEXT_3),
+                JobStatus::Running => (icons::ARROW_CLOCKWISE, theme::ACCENT),
+                JobStatus::Done => (icons::CHECK_CIRCLE, common::OK),
+                JobStatus::Failed => (icons::WARNING_CIRCLE, common::ERR),
+                JobStatus::Cancelled => (icons::X, theme::TEXT_3),
             };
-            ui.add_sized([64.0, 18.0], egui::Label::new(RichText::new(label).small().strong().color(color)));
+            ui.label(RichText::new(icon).size(16.0).color(color));
             ui.add(egui::Label::new(RichText::new(&job.label).strong()).truncate());
             ui.label(RichText::new(&job.operation).small().weak());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -81,7 +82,7 @@ fn job_card(ui: &mut egui::Ui, queue: &JobQueue, job: &JobInfo) {
             });
         });
         if job.status == JobStatus::Running {
-            let mut bar = egui::ProgressBar::new(job.progress).desired_height(5.0);
+            let mut bar = egui::ProgressBar::new(job.progress).desired_height(4.0).fill(crate::theme::ACCENT);
             if job.progress <= 0.0 {
                 bar = bar.animate(true);
             }

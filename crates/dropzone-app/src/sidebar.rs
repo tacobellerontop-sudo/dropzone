@@ -2,21 +2,21 @@
 
 use std::path::PathBuf;
 
-use eframe::egui::{self, RichText};
+use eframe::egui::{self, Color32, RichText};
 
 use crate::app::App;
-use crate::common;
 use crate::nav::Location;
+use crate::{common, icons, theme};
 
 fn places() -> Vec<(&'static str, &'static str, Option<PathBuf>)> {
     vec![
-        ("🏠", "Home", dirs::home_dir()),
-        ("🖥", "Desktop", dirs::desktop_dir()),
-        ("📄", "Documents", dirs::document_dir()),
-        ("⬇", "Downloads", dirs::download_dir()),
-        ("🖼", "Pictures", dirs::picture_dir()),
-        ("🎵", "Music", dirs::audio_dir()),
-        ("🎞", "Videos", dirs::video_dir()),
+        (icons::HOUSE, "Home", dirs::home_dir()),
+        (icons::DESKTOP, "Desktop", dirs::desktop_dir()),
+        (icons::FILE_TEXT, "Documents", dirs::document_dir()),
+        (icons::DOWNLOAD_SIMPLE, "Downloads", dirs::download_dir()),
+        (icons::IMAGE, "Pictures", dirs::picture_dir()),
+        (icons::MUSIC_NOTES, "Music", dirs::audio_dir()),
+        (icons::FILM_STRIP, "Videos", dirs::video_dir()),
     ]
 }
 
@@ -53,36 +53,40 @@ impl App {
         let mut go: Option<PathBuf> = None;
         let mut unpin: Option<PathBuf> = None;
 
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.add_space(4.0);
-                ui.label(RichText::new("⬇").size(20.0).color(ui.visuals().selection.bg_fill));
-                ui.label(RichText::new("Dropzone").size(16.0).strong());
-            });
-            ui.add_space(10.0);
+        // Brand mark.
+        ui.horizontal(|ui| {
+            ui.add_space(8.0);
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(26.0, 26.0), egui::Sense::hover());
+            ui.painter().rect_filled(rect, 7.0, theme::ACCENT);
+            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icons::TRAY_ARROW_DOWN, egui::FontId::proportional(16.0), Color32::WHITE);
+            ui.add_space(2.0);
+            ui.label(RichText::new("Dropzone").font(theme::strong(15.0)).color(theme::TEXT));
+        });
+        ui.add_space(4.0);
 
-            let entry = |ui: &mut egui::Ui, icon: &str, label: &str, path: &PathBuf, go: &mut Option<PathBuf>| -> egui::Response {
-                let selected = current.as_ref() == Some(path);
-                let r = ui.add_sized([ui.available_width(), 26.0], egui::Button::selectable(selected, format!("{icon}  {label}")).right_text(""));
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            let mut entry = |ui: &mut egui::Ui, icon: &str, label: &str, path: &PathBuf| -> egui::Response {
+                let r = theme::nav_row(ui, icon, label, current.as_ref() == Some(path));
                 if r.clicked() {
-                    *go = Some(path.clone());
+                    go = Some(path.clone());
                 }
                 r.on_hover_text(path.display().to_string())
             };
 
-            section(ui, "Quick access");
+            theme::section(ui, "Places");
             for (icon, label, path) in places() {
                 if let Some(p) = path.filter(|p| p.is_dir()) {
-                    entry(ui, icon, label, &p, &mut go);
+                    entry(ui, icon, label, &p);
                 }
             }
 
             if !self.settings.pinned.is_empty() {
-                section(ui, "Pinned");
+                theme::section(ui, "Pinned");
                 for p in self.settings.pinned.clone() {
-                    let r = entry(ui, "📌", &common::file_name(&p), &p, &mut go);
+                    let r = entry(ui, icons::PUSH_PIN, &common::file_name(&p), &p);
                     r.context_menu(|ui| {
-                        if ui.button("Unpin").clicked() {
+                        if ui.add(theme::menu_item(icons::X, "Unpin")).clicked() {
                             unpin = Some(p.clone());
                             ui.close();
                         }
@@ -90,9 +94,9 @@ impl App {
                 }
             }
 
-            section(ui, "Drives");
+            theme::section(ui, "Drives");
             for (label, p) in drives() {
-                entry(ui, "💽", &label, &p, &mut go);
+                entry(ui, icons::HARD_DRIVE, &label, &p);
             }
         });
 
@@ -103,10 +107,4 @@ impl App {
             self.navigate(&ctx, Location::Folder(p));
         }
     }
-}
-
-fn section(ui: &mut egui::Ui, title: &str) {
-    ui.add_space(8.0);
-    ui.label(RichText::new(title.to_uppercase()).small().strong().color(ui.visuals().weak_text_color()));
-    ui.add_space(2.0);
 }

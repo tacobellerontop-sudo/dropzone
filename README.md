@@ -77,7 +77,8 @@ pushing a `v*` tag attaches it to a GitHub release.
 
 ## Licenses
 
-Dropzone is MIT licensed. The Windows release bundles an unmodified `ffmpeg.exe`
+Dropzone is MIT licensed. It embeds the Inter typeface (SIL Open Font License) and a subset of
+Phosphor Icons (MIT); their licenses are in `crates/dropzone-app/assets/fonts`. The Windows release bundles an unmodified `ffmpeg.exe`
 (the [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) essentials build), which is GPLv3;
 its license is included as `FFMPEG-LICENSE.txt` and its source is available from
 [ffmpeg.org](https://ffmpeg.org/download.html). Dropzone runs it as a separate program.

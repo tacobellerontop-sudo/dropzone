@@ -127,7 +127,7 @@ const SETTINGS_KEY: &str = "dropzone-settings";
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, initial: Vec<PathBuf>) -> Self {
-        style(&cc.egui_ctx);
+        crate::theme::install(&cc.egui_ctx);
         let settings: Settings = cc.storage.and_then(|s| eframe::get_value(s, SETTINGS_KEY)).unwrap_or_default();
 
         let events: Arc<Mutex<Vec<QueueEvent>>> = Arc::default();
@@ -408,40 +408,49 @@ impl App {
     }
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
+        use crate::{icons, theme};
         ui.horizontal(|ui| {
+            ui.set_height(22.0);
+            let quiet = |t: String| RichText::new(t).size(12.0).color(theme::TEXT_3);
             let n = self.visible.len();
-            ui.label(RichText::new(format!("{n} item{}", if n == 1 { "" } else { "s" })).small().weak());
+            ui.label(quiet(format!("{n} item{}", if n == 1 { "" } else { "s" })));
             let sel = self.selected_items();
             if !sel.is_empty() {
                 let size: u64 = sel.iter().filter_map(|i| i.size).sum();
-                ui.label(RichText::new(format!("· {} selected · {}", sel.len(), common::human_size(size))).small().weak());
+                ui.label(quiet(format!("{} selected, {}", sel.len(), common::human_size(size))));
             }
             if let Some((paths, cut)) = &self.clip {
-                ui.label(RichText::new(format!("· {} {} on clipboard", paths.len(), if *cut { "cut" } else { "copied" })).small().weak());
+                ui.label(quiet(format!("{} {} on the clipboard", paths.len(), if *cut { "cut" } else { "copied" })));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let active: Vec<&JobInfo> = self.jobs.iter().filter(|j| !j.status.is_finished()).collect();
                 let failed = self.jobs.iter().filter(|j| j.status == JobStatus::Failed).count();
-                let text = if !active.is_empty() {
+                let (icon, text, color) = if !active.is_empty() {
                     let p = active.iter().map(|j| j.progress).sum::<f32>() / active.len() as f32;
-                    format!("⟳ {} job{} · {:.0}%", active.len(), if active.len() == 1 { "" } else { "s" }, p * 100.0)
+                    (icons::STACK, format!("{} running, {:.0}%", active.len(), p * 100.0), theme::ACCENT)
                 } else if failed > 0 {
-                    format!("⚠ {failed} failed")
+                    (icons::WARNING_CIRCLE, format!("{failed} failed"), common::ERR)
                 } else if !self.jobs.is_empty() {
-                    "✔ Queue done".into()
+                    (icons::CHECK_CIRCLE, "Queue done".into(), common::OK)
                 } else {
-                    "Queue".into()
+                    (icons::STACK, "Queue".into(), theme::TEXT_2)
                 };
-                let color = if failed > 0 && active.is_empty() { common::ERR } else { ui.visuals().text_color() };
-                if ui.add(egui::Button::new(RichText::new(text).small().color(color)).frame(false)).clicked() {
+                let btn = egui::Button::new(RichText::new(format!("{icon}  {text}")).size(12.0).color(color))
+                    .frame_when_inactive(false)
+                    .min_size(egui::vec2(0.0, 22.0));
+                if ui.add(btn).on_hover_text("Show the job queue").clicked() {
                     self.queue_open = !self.queue_open;
                 }
+                if !active.is_empty() {
+                    let p = active.iter().map(|j| j.progress).sum::<f32>() / active.len() as f32;
+                    ui.add(egui::ProgressBar::new(p).desired_width(90.0).desired_height(4.0).fill(theme::ACCENT));
+                }
                 if !self.has_ffmpeg {
-                    ui.label(RichText::new("FFmpeg not found: audio/video conversion off").small().color(common::WARN))
+                    ui.label(RichText::new(format!("{}  FFmpeg not found, audio/video off", icons::WARNING)).size(12.0).color(common::WARN))
                         .on_hover_text("Put ffmpeg.exe next to dropzone.exe or on your PATH.");
                 }
                 if self.quit_when_done {
-                    ui.label(RichText::new("Will quit when the queue finishes").small().color(common::WARN));
+                    ui.label(RichText::new("Will quit when the queue finishes").size(12.0).color(common::WARN));
                 }
             });
         });
@@ -456,15 +465,24 @@ impl App {
         egui::Area::new(egui::Id::unique("toasts")).anchor(egui::Align2::RIGHT_BOTTOM, [-16.0, -40.0]).order(egui::Order::Foreground).show(ctx, |ui| {
             let mut dismiss = None;
             for (i, t) in self.toasts.iter().enumerate() {
-                let fill = if t.error { common::ERR } else { Color32::from_gray(38) };
-                egui::Frame::NONE.fill(fill).corner_radius(8.0).inner_margin(10.0).show(ui, |ui| {
+                let (icon, icon_color) = if t.error { (crate::icons::WARNING_CIRCLE, common::ERR) } else { (crate::icons::CHECK_CIRCLE, crate::theme::ACCENT) };
+                let frame = egui::Frame::NONE
+                    .fill(Color32::from_rgb(36, 36, 42))
+                    .stroke(egui::Stroke::new(1.0, crate::theme::BORDER))
+                    .corner_radius(10)
+                    .inner_margin(egui::Margin::symmetric(14, 10))
+                    .shadow(egui::Shadow { offset: [0, 6], blur: 18, spread: 0, color: Color32::from_black_alpha(90) });
+                frame.show(ui, |ui| {
                     ui.set_max_width(380.0);
-                    let r = ui.add(egui::Label::new(RichText::new(&t.text).color(Color32::WHITE)).wrap().sense(egui::Sense::click()));
-                    if r.clicked() {
-                        dismiss = Some(i);
-                    }
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(icon).size(16.0).color(icon_color));
+                        let r = ui.add(egui::Label::new(RichText::new(&t.text).color(crate::theme::TEXT)).wrap().sense(egui::Sense::click()));
+                        if r.clicked() {
+                            dismiss = Some(i);
+                        }
+                    });
                 });
-                ui.add_space(6.0);
+                ui.add_space(8.0);
             }
             if let Some(i) = dismiss {
                 self.toasts.remove(i);
@@ -481,10 +499,17 @@ impl App {
             Location::Archive { .. } => "Open a folder to drop files into it".into(),
         };
         let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("drop-overlay")));
-        let accent = ctx.global_style().visuals.selection.bg_fill;
-        painter.rect_filled(rect, 0.0, accent.gamma_multiply(0.12));
-        painter.rect_stroke(rect.shrink(2.0), 6.0, egui::Stroke::new(2.0, accent), egui::StrokeKind::Inside);
-        painter.text(rect.center(), egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(20.0), accent);
+        let accent = crate::theme::ACCENT;
+        painter.rect_filled(rect, 12.0, crate::theme::accent_tint(30));
+        painter.rect_stroke(rect.shrink(2.0), 12.0, egui::Stroke::new(2.0, accent), egui::StrokeKind::Inside);
+        painter.text(
+            rect.center() - egui::vec2(0.0, 22.0),
+            egui::Align2::CENTER_CENTER,
+            crate::icons::TRAY_ARROW_DOWN,
+            egui::FontId::proportional(40.0),
+            accent,
+        );
+        painter.text(rect.center() + egui::vec2(0.0, 18.0), egui::Align2::CENTER_CENTER, text, crate::theme::strong(17.0), crate::theme::TEXT);
     }
 }
 
@@ -503,52 +528,73 @@ impl eframe::App for App {
         self.refresh_visible();
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("{} – Dropzone", self.loc.title())));
 
-        let panel_fill = ctx.global_style().visuals.panel_fill;
-        let side_fill = if ctx.global_style().visuals.dark_mode { Color32::from_gray(24) } else { Color32::from_gray(243) };
+        use crate::theme::{self, CHROME};
+        let chrome = |m: egui::Margin| egui::Frame::NONE.fill(CHROME).inner_margin(m);
 
-        egui::Panel::top("toolbar").frame(egui::Frame::NONE.fill(panel_fill).inner_margin(egui::Margin::symmetric(10, 8))).show(ui, |ui| self.toolbar(ui));
+        egui::Panel::top("toolbar")
+            .show_separator_line(false)
+            .frame(chrome(egui::Margin { left: 10, right: 12, top: 10, bottom: 10 }))
+            .show(ui, |ui| self.toolbar(ui));
 
-        egui::Panel::bottom("status").frame(egui::Frame::NONE.fill(side_fill).inner_margin(egui::Margin::symmetric(12, 4))).show(ui, |ui| self.status_bar(ui));
+        egui::Panel::bottom("status")
+            .show_separator_line(false)
+            .frame(chrome(egui::Margin { left: 18, right: 16, top: 2, bottom: 6 }))
+            .show(ui, |ui| self.status_bar(ui));
 
         if self.queue_open {
             egui::Panel::bottom("queue")
                 .resizable(true)
-                .default_size(240.0)
-                .size_range(120.0..=600.0)
-                .frame(egui::Frame::NONE.fill(panel_fill).inner_margin(egui::Margin::symmetric(12, 8)))
-                .show(ui, |ui| crate::queue_panel::ui(ui, self));
+                .show_separator_line(false)
+                .default_size(250.0)
+                .size_range(130.0..=600.0)
+                .frame(chrome(egui::Margin { left: 8, right: 12, top: 4, bottom: 4 }))
+                .show(ui, |ui| {
+                    theme::card().inner_margin(12).show(ui, |ui| {
+                        ui.set_min_size(ui.available_size());
+                        crate::queue_panel::ui(ui, self)
+                    });
+                });
         }
 
         egui::Panel::left("sidebar")
             .resizable(true)
-            .default_size(190.0)
-            .size_range(150.0..=320.0)
-            .frame(egui::Frame::NONE.fill(side_fill).inner_margin(egui::Margin::symmetric(8, 10)))
+            .show_separator_line(false)
+            .default_size(210.0)
+            .size_range(160.0..=320.0)
+            .frame(chrome(egui::Margin { left: 8, right: 8, top: 0, bottom: 8 }))
             .show(ui, |ui| self.sidebar(ui));
 
+        let side_card = |ui: &mut egui::Ui, add: &mut dyn FnMut(&mut egui::Ui)| {
+            theme::card().inner_margin(14).show(ui, |ui| {
+                ui.set_min_size(ui.available_size());
+                add(ui)
+            });
+        };
         if self.tool.is_some() {
             egui::Panel::right("tool")
                 .resizable(false)
-                .exact_size(330.0)
-                .frame(egui::Frame::NONE.fill(side_fill).inner_margin(egui::Margin::symmetric(12, 10)))
-                .show(ui, |ui| self.tool_panel(ui));
+                .show_separator_line(false)
+                .exact_size(344.0)
+                .frame(chrome(egui::Margin { left: 4, right: 12, top: 0, bottom: 4 }))
+                .show(ui, |ui| side_card(ui, &mut |ui| self.tool_panel(ui)));
         } else if self.settings.details_open {
             egui::Panel::right("details")
                 .resizable(true)
-                .default_size(280.0)
-                .size_range(200.0..=520.0)
-                .frame(egui::Frame::NONE.fill(side_fill).inner_margin(egui::Margin::symmetric(12, 10)))
-                .show(ui, |ui| self.details_panel(ui));
+                .show_separator_line(false)
+                .default_size(290.0)
+                .size_range(220.0..=520.0)
+                .frame(chrome(egui::Margin { left: 4, right: 12, top: 0, bottom: 4 }))
+                .show(ui, |ui| side_card(ui, &mut |ui| self.details_panel(ui)));
         }
 
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(panel_fill).inner_margin(egui::Margin { left: 4, right: 4, top: 0, bottom: 0 })).show(
-            ui,
-            |ui| {
+        egui::CentralPanel::default().frame(chrome(egui::Margin { left: 0, right: 4, top: 0, bottom: 4 })).show(ui, |ui| {
+            theme::card().show(ui, |ui| {
+                ui.set_min_size(ui.available_size());
                 let rect = ui.max_rect();
                 self.main_view(ui);
                 self.drag_overlay(&ctx, rect);
-            },
-        );
+            });
+        });
 
         self.rename_window(&ctx);
         self.compare_window(&ctx);
@@ -567,20 +613,4 @@ impl eframe::App for App {
         }
         eframe::set_value(storage, SETTINGS_KEY, &self.settings);
     }
-}
-
-fn style(ctx: &egui::Context) {
-    ctx.all_styles_mut(|s| {
-        s.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        s.spacing.button_padding = egui::vec2(10.0, 5.0);
-        s.spacing.interact_size.y = 26.0;
-        s.visuals.window_corner_radius = 10.0.into();
-        s.visuals.menu_corner_radius = 8.0.into();
-        use egui::{FontFamily, FontId, TextStyle};
-        s.text_styles.insert(TextStyle::Body, FontId::new(14.0, FontFamily::Proportional));
-        s.text_styles.insert(TextStyle::Button, FontId::new(14.0, FontFamily::Proportional));
-        s.text_styles.insert(TextStyle::Heading, FontId::new(19.0, FontFamily::Proportional));
-        s.text_styles.insert(TextStyle::Small, FontId::new(12.0, FontFamily::Proportional));
-        s.text_styles.insert(TextStyle::Monospace, FontId::new(12.5, FontFamily::Monospace));
-    });
 }
