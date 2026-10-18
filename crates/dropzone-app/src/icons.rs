@@ -1,0 +1,62 @@
+//! Phosphor icon codepoints (https://phosphoricons.com, MIT). Only these glyphs are kept in
+//! `assets/fonts/phosphor*.ttf`; regenerate the subset with `scripts/subset-icons.py` after adding one.
+
+#![allow(dead_code)]
+
+pub const ARCHIVE: &str = "\u{E00C}";
+pub const ARROW_CLOCKWISE: &str = "\u{E036}";
+pub const ARROW_LEFT: &str = "\u{E058}";
+pub const ARROW_RIGHT: &str = "\u{E06C}";
+pub const ARROW_SQUARE_OUT: &str = "\u{E5DE}";
+pub const ARROW_UP: &str = "\u{E08E}";
+pub const CARET_DOWN: &str = "\u{E136}";
+pub const CARET_RIGHT: &str = "\u{E13A}";
+pub const CARET_UP: &str = "\u{E13C}";
+pub const CHECK: &str = "\u{E182}";
+pub const CHECK_CIRCLE: &str = "\u{E184}";
+pub const CLIPBOARD: &str = "\u{E196}";
+pub const COPY: &str = "\u{E1CA}";
+pub const DESKTOP: &str = "\u{E560}";
+pub const DOWNLOAD_SIMPLE: &str = "\u{E20C}";
+pub const EYE: &str = "\u{E220}";
+pub const FILE: &str = "\u{E230}";
+pub const FILE_AUDIO: &str = "\u{EA20}";
+pub const FILE_CODE: &str = "\u{E914}";
+pub const FILE_IMAGE: &str = "\u{EA24}";
+pub const FILE_PDF: &str = "\u{E702}";
+pub const FILE_TEXT: &str = "\u{E23A}";
+pub const FILE_VIDEO: &str = "\u{EA22}";
+pub const FILE_ZIP: &str = "\u{E958}";
+pub const FILES: &str = "\u{E710}";
+pub const FINGERPRINT: &str = "\u{E23E}";
+pub const FILM_STRIP: &str = "\u{E792}";
+pub const FOLDER: &str = "\u{E24A}";
+pub const FOLDER_OPEN: &str = "\u{E256}";
+pub const FOLDER_PLUS: &str = "\u{E258}";
+pub const GIT_DIFF: &str = "\u{E27C}";
+pub const HARD_DRIVE: &str = "\u{E29E}";
+pub const HARD_DRIVES: &str = "\u{E2A0}";
+pub const HOUSE: &str = "\u{E2C2}";
+pub const IMAGE: &str = "\u{E2CA}";
+pub const INFO: &str = "\u{E2CE}";
+pub const LINK: &str = "\u{E2E2}";
+pub const LIST_CHECKS: &str = "\u{EADC}";
+pub const LOCK_SIMPLE: &str = "\u{E308}";
+pub const MAGIC_WAND: &str = "\u{E6B6}";
+pub const MAGNIFYING_GLASS: &str = "\u{E30C}";
+pub const MUSIC_NOTES: &str = "\u{E340}";
+pub const PACKAGE: &str = "\u{E390}";
+pub const PENCIL_SIMPLE: &str = "\u{E3B4}";
+pub const PUSH_PIN: &str = "\u{E3E2}";
+pub const ROWS: &str = "\u{E5A2}";
+pub const SCISSORS: &str = "\u{EAE0}";
+pub const SHIELD_CHECK: &str = "\u{E40C}";
+pub const SIDEBAR_SIMPLE: &str = "\u{EC24}";
+pub const SQUARES_FOUR: &str = "\u{E464}";
+pub const STACK: &str = "\u{E466}";
+pub const TEXT_AA: &str = "\u{E6EE}";
+pub const TRASH: &str = "\u{E4A6}";
+pub const TRAY_ARROW_DOWN: &str = "\u{E010}";
+pub const WARNING: &str = "\u{E4E0}";
+pub const WARNING_CIRCLE: &str = "\u{E4E2}";
+pub const X: &str = "\u{E4F6}";
